@@ -2,7 +2,9 @@
 
 A Chrome extension that shows historical sale averages on the [WikiMasters marketplace](https://www.wiki-masters.com/marketplace), auction pages, and your collection. This repository also contains an **optional local selling bot**. The extension works on its own; installing it does not start the bot or place any bids or listings.
 
-> **Authorization required.** [WikiMasters' public community rules](https://www.wiki-masters.com/rules) prohibit bots and traffic interception for an advantage. This project observes marketplace responses, and its optional bot can create listings. Obtain explicit permission from WikiMasters for **your own account and intended use** before using these features. Permission granted to another user does not cover you. This is an independent project, not an official WikiMasters extension.
+This is an independent project, not an official WikiMasters extension.
+
+![WikiMasters marketplace showing average sale prices in purple and highlighted auctions](docs/marketplace.png)
 
 ## What the extension does
 
@@ -45,7 +47,7 @@ Test the connection without transactions:
 npm run bot:dry
 ```
 
-After confirming that you are authorized and have reviewed the cards that may be sold, start real listings:
+After reviewing the cards that may be sold, start real listings:
 
 ```sh
 npm run bot:live
