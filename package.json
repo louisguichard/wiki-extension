@@ -1,0 +1,19 @@
+{
+  "name": "wikimasters-market-lens",
+  "private": true,
+  "version": "0.7.0",
+  "type": "commonjs",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "bot:setup": "node automation/setup-bridge.js",
+    "bot:dry": "node automation/run.js run",
+    "bot:live": "node automation/start.js",
+    "bot:stop": "node automation/stop.js",
+    "bot:install": "node automation/service.js install",
+    "bot:status": "node automation/service.js status",
+    "bot:uninstall": "node automation/service.js uninstall"
+  },
+  "dependencies": {
+    "ws": "^8.21.3"
+  }
+}

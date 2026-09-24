@@ -1,0 +1,44 @@
+{
+  "manifest_version": 3,
+  "name": "WikiMasters Market Lens",
+  "version": "0.7.0",
+  "description": "Shows historical sale averages on WikiMasters and optionally connects to a local selling bot.",
+  "permissions": [
+    "alarms",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://www.wiki-masters.com/*",
+    "http://127.0.0.1/*"
+  ],
+  "background": {
+    "service_worker": "bot-worker.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.wiki-masters.com/*"
+      ],
+      "js": [
+        "market-model.js",
+        "page-bridge.js",
+        "content.js"
+      ],
+      "css": [
+        "styles.css"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://www.wiki-masters.com/*"
+      ],
+      "js": [
+        "bot-content.js"
+      ],
+      "run_at": "document_start",
+      "world": "ISOLATED"
+    }
+  ]
+}

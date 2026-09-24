@@ -1,0 +1,32 @@
+{
+  "bidBudget": {
+    "spendableBalance": 1000,
+    "reservedBalance": 100,
+    "activeExposure": 0,
+    "maxTotalExposure": 800
+  },
+  "auctions": [
+    {
+      "label": "Example auction",
+      "minimumBid": 650,
+      "resaleNetEstimate": 1000,
+      "active": true,
+      "ownAuction": false
+    }
+  ],
+  "listingLimits": {
+    "activeListings": 4,
+    "maxListings": 5
+  },
+  "cards": [
+    {
+      "label": "Example owned copy",
+      "userCardId": "example-copy",
+      "saleAverage": 1000,
+      "saleCount": 5,
+      "protectedCard": false,
+      "alreadyListed": false
+    }
+  ],
+  "bidSamples": []
+}

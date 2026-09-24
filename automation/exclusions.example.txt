@@ -1,0 +1,4 @@
+# Une carte à conserver par ligne : son titre WikiMasters exact ou son ID de modèle.
+# Les lignes commençant par # sont ignorées.
+# Exemple fictif :
+# Ada Lovelace

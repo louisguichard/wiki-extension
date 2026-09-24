@@ -1,0 +1,10 @@
+{
+  "scanIntervalSeconds": 20,
+  "resaleHaircut": 1.0,
+  "minSaleCount": 0,
+  "buyEnabled": false,
+  "emailNotifications": false,
+  "notificationSince": null,
+  "excludedCardIds": [],
+  "excludedCopyIds": []
+}

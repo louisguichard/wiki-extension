@@ -1,0 +1,15 @@
+node_modules/
+.wmma-bot/
+bot-token.js
+automation/bridge-token.json
+automation/config.local.json
+automation/exclusions.local.txt
+*.log
+.env
+.env.*
+!.env.example
+__pycache__/
+*.pyc
+.DS_Store
+output/
+tmp/
