@@ -4,6 +4,7 @@ bot-token.js
 automation/bridge-token.json
 automation/config.local.json
 automation/exclusions.local.txt
+automation/mail.local.py
 *.log
 .env
 .env.*

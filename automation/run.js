@@ -7,7 +7,7 @@ const { execFileSync } = require('node:child_process');
 const { WebSocketServer, WebSocket } = require('ws');
 const { createApiClient } = require('./api-client.js');
 const { MarketBot } = require('./bot.js');
-const { TradeNotifier } = require('./notifications.js');
+const { TradeNotifier, sendViaPython } = require('./notifications.js');
 
 const root = path.resolve(__dirname, '..');
 const privateDir = path.join(root, '.wmma-bot');
@@ -34,6 +34,8 @@ function loadConfig() {
       !Array.isArray(config.excludedCopyIds) ||
       typeof config.buyEnabled !== 'boolean' ||
       typeof config.emailNotifications !== 'boolean' ||
+      (config.mailSource != null && typeof config.mailSource !== 'string') ||
+      (config.mailTo != null && typeof config.mailTo !== 'string') ||
       (config.notificationSince != null &&
         !Number.isFinite(Date.parse(config.notificationSince)))) {
     throw new Error('Invalid bot configuration');
@@ -208,7 +210,8 @@ async function main() {
   }, { writesEnabled: live, bidsEnabled: live && config.buyEnabled });
   const bot = new MarketBot({ api, config, state, save: saveState, log });
   const notifier = live && config.emailNotifications ? new TradeNotifier({
-    bot, api, state, save: saveState, log, since: config.notificationSince
+    bot, api, state, save: saveState, log, since: config.notificationSince,
+    send: (message) => sendViaPython(message, { source: config.mailSource, to: config.mailTo })
   }) : null;
   log(live ? 'live_started' : 'dry_run_started');
   if (!config.buyEnabled) log('buys_disabled');

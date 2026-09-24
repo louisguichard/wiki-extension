@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { TradeNotifier, completedEvents } = require('../automation/notifications.js');
+const { recordListing, reconcilePurchases } = require('../automation/profit-ledger.js');
 
 const saleId = '11111111-1111-4111-8111-111111111111';
 const purchaseId = '22222222-2222-4222-8222-222222222222';
@@ -39,9 +40,23 @@ test('sends each outcome once with average and estimated gross profit', async ()
   await notifier.tick();
   assert.equal(sent.length, 2);
   assert.match(sent[0].body, /700 wikibidous/);
+  assert.match(sent[0].body, /Plus-value réalisée brute : non calculable/);
   assert.match(sent[1].body, /Prix moyen de vente : 1\s?000 wikibidous/);
   assert.match(sent[1].body, /Plus-value estimée avant frais : 700 wikibidous/);
   assert.equal(Object.keys(state.notifications.sent).length, 2);
+});
+
+test('sale email includes realized gross profit for a uniquely tracked copy', async () => {
+  const state = {};
+  const copyId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  reconcilePurchases(state, [purchase], [{ id: copyId, card_id: cardId,
+    card: { rarity: 'L' }, obtained_at: settled }]);
+  recordListing(state, saleId, copyId, cardId);
+  const bot = { averages: new Map(), config: { resaleHaircut: 1 } };
+  const notifier = new TradeNotifier({ bot, api: {}, state, save: () => {}, since });
+  const message = await notifier.emailFor({ kind: 'sale', item: sale, key: `sale:${saleId}` });
+  assert.match(message.body, /Prix d'achat : 300 wikibidous/);
+  assert.match(message.body, /Plus-value réalisée brute : 400 wikibidous/);
 });
 
 test('retries a failed email after backoff without duplicate successful mail', async () => {

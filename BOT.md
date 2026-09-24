@@ -42,7 +42,7 @@ Email notifications are disabled by default. To enable them, set `emailNotificat
 - `WMMA_MAIL_TO` — the recipient address
 - `WMMA_SMTP_HOST` and `WMMA_SMTP_PORT` — optional; default to `smtp.gmail.com:587`
 
-The notifier checks settled sales and purchases every minute. A sale email includes the final sale price. A purchase email includes the paid price, available average, and estimated profit before fees; manual purchases are also detected. Notification IDs are stored locally to avoid normal duplicates, though an ambiguous SMTP response can still lead to a retry. SMTP acceptance does not prove delivery to an inbox.
+The notifier checks settled sales and purchases every minute. A purchase email includes the paid price, available average, and estimated profit before fees; manual purchases are also detected. A sale email includes the final price and, when the bot can uniquely match the sold copy to a purchase using card type and acquisition time, its purchase cost and **calculated gross realized profit** (final sale price minus acquisition cost). This matching is an inference because the current API does not supply an acquisition auction ID on collection copies. The email reports "not calculable" when the link is missing or ambiguous, such as for older listings or copies acquired from packs or trades. Fees are not included. This local ledger is saved under `.wmma-bot/` and is not uploaded to GitHub. Notification IDs are stored locally to avoid normal duplicates, though an ambiguous SMTP response can still lead to a retry. SMTP acceptance does not prove delivery to an inbox.
 
 Do not put mail passwords in `config.local.json`, the repository, screenshots, or issue reports. Use a private environment or credential manager.
 

@@ -4,6 +4,7 @@ const { randomInt } = require('node:crypto');
 const { minimumBidFromAuction, displayedPrice, planBid, planListing,
   recommendBidLead } = require('./strategy.js');
 const { loadExclusions, isExcluded } = require('./exclusions.js');
+const { reconcilePurchases, recordListing } = require('./profit-ledger.js');
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const amount = (value) => value != null && value !== '' &&
@@ -402,6 +403,7 @@ class MarketBot {
       !account.mine.selling.some((item) => item.card_id === uncertain.cardId));
     const cards = await this.collection();
     if (this.collectionProgress) return;
+    if (reconcilePurchases(this.state, account.mine.won, cards)) this.save(this.state);
     const listedIds = new Set(account.mine.selling.map((item) => item.card_id || item.card?.id)
       .filter(Boolean));
     const rankedCopies = new Map();
@@ -485,14 +487,19 @@ class MarketBot {
         const response = await this.api.createListing(plan.userCardId, plan.baseAmount);
         if (response.ok) {
           let confirmed = false;
+          let listingId = null;
+          const previousIds = new Set(fresh.mine.selling.map((item) => item.id));
           for (let check = 0; check < 2; check++) {
             try {
               const snapshot = await this.account();
+              const matches = snapshot.mine.selling.filter((item) =>
+                !previousIds.has(item.id) && item.card_id === candidate.cardId);
               if (snapshot.mine.selling.length > fresh.mine.selling.length ||
                   snapshot.mine.selling.some((item) =>
                     item.card_id === candidate.cardId || item.card_id === plan.userCardId)) {
                 account = snapshot;
                 confirmed = true;
+                if (matches.length === 1) listingId = matches[0].id || null;
                 break;
               }
             } catch (error) {
@@ -501,6 +508,9 @@ class MarketBot {
             if (check === 0) await sleep(2000);
           }
           if (confirmed) {
+            if (recordListing(this.state, listingId, plan.userCardId, candidate.cardId)) {
+              this.save(this.state);
+            }
             this.log('listing_confirmed', { baseAmount: plan.baseAmount,
               sellingCount: account.mine.selling.length });
             this.collectionCache.cards = this.collectionCache.cards.filter((copy) =>

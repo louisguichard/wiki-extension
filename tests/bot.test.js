@@ -207,13 +207,15 @@ test('confirms an accepted listing against fresh account state', async () => {
   env.bot.log = (event, fields) => events.push({ event, ...fields });
   env.bot.api.createListing = async (id, value) => {
     env.calls.listings.push({ id, value });
-    selling.push({ card_id: cardA });
+    selling.push({ id: auctionId, card_id: cardA });
     return ok({});
   };
   await env.bot.listingTick();
   assert.ok(events.some((entry) => entry.event === 'listing_confirmed' &&
     entry.sellingCount === 1));
   assert.equal(env.state.uncertainListings.length, 0);
+  assert.deepEqual(env.state.tradeLedger.listings[auctionId],
+    { copyId: copyA, cardId: cardA });
 });
 
 test('values every available card before filling all free sale slots by average', async () => {

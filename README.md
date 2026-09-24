@@ -72,7 +72,7 @@ Titles are matched without regard to case or repeated whitespace. A card-model U
 - The extension runs on `www.wiki-masters.com`. Its optional bot bridge listens only on `127.0.0.1:17887` and requires a locally generated random token.
 - The bot uses the browser session; it does not request or store your WikiMasters password.
 - Average prices and timing samples are stored locally in the browser. Bot state and configuration remain on your computer.
-- **Never commit or share** `bot-token.js`, `automation/bridge-token.json`, `automation/config.local.json`, `automation/exclusions.local.txt`, `.wmma-bot/`, or SMTP credentials. All are covered by `.gitignore`.
+- **Never commit or share** `bot-token.js`, `automation/bridge-token.json`, `automation/config.local.json`, `automation/exclusions.local.txt`, `automation/mail.local.py`, `.wmma-bot/`, or SMTP credentials. All are covered by `.gitignore`.
 - Email notifications are off by default and require your own SMTP settings.
 
 See the [French PDF guide](docs/guide-fr.pdf) for a concise walkthrough.

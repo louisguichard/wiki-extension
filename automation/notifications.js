@@ -1,8 +1,11 @@
 'use strict';
 
+const fs = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
+const { realizedSale } = require('./profit-ledger.js');
 
+const localMailScript = path.join(__dirname, 'mail.local.py');
 const mailScript = path.join(__dirname, 'mail.py');
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const numeric = (value) => Number.isFinite(Number(value)) && Number(value) > 0 ?
@@ -13,10 +16,13 @@ const format = (value) => new Intl.NumberFormat('fr-FR', {
 const titleFor = (item) => String(item.card?.wikipedia_title || 'Carte WikiMasters')
   .replace(/[\r\n\t]+/g, ' ').slice(0, 120);
 
-function sendViaPython(payload) {
+function sendViaPython(payload, settings = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn('python3', [mailScript], {
-      stdio: ['pipe', 'ignore', 'ignore']
+    const env = { ...process.env };
+    if (settings.source) env.WMMA_SMTP_SOURCE = settings.source;
+    if (settings.to) env.WMMA_MAIL_TO = settings.to;
+    const child = spawn('python3', [fs.existsSync(localMailScript) ? localMailScript : mailScript], {
+      stdio: ['pipe', 'ignore', 'ignore'], env
     });
     const timer = setTimeout(() => { child.kill(); reject(new Error('mail_timeout')); }, 30000);
     child.on('error', (error) => { clearTimeout(timer); reject(error); });
@@ -64,10 +70,15 @@ class TradeNotifier {
     const title = titleFor(item);
     const paid = numeric(item.final_price);
     const link = `https://www.wiki-masters.com/marketplace/${item.id}`;
-    if (kind === 'sale') return { eventKey: key,
-      subject: `WikiMasters : vente conclue — ${title}`,
-      body: `${title}\nPrix de vente final : ${format(paid)} wikibidous\n` +
-        `Enchère : ${link}\n` };
+    if (kind === 'sale') {
+      const realized = realizedSale(this.state, item);
+      return { eventKey: key,
+        subject: `WikiMasters : vente conclue — ${title}`,
+        body: `${title}\nPrix de vente final : ${format(paid)} wikibidous\n` +
+          `Prix d'achat : ${realized ? `${format(realized.cost)} wikibidous` : 'inconnu'}\n` +
+          `Plus-value réalisée brute : ${realized ? `${format(realized.profit)} wikibidous` : 'non calculable'}\n` +
+          `Enchère : ${link}\n` };
+    }
     const rarity = item.snapshot_rarity || item.card?.rarity;
     const cached = this.bot.averages.get(`${item.card_id}:${rarity}`);
     const sale = cached?.value || await this.bot.saleValue(item.card_id, rarity);
