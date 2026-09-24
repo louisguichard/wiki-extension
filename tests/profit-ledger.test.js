@@ -15,13 +15,13 @@ const copy = { id: copyId, card_id: cardId, card: { rarity: 'L' },
 const sale = { id: saleId, card_id: cardId, final_price: 700,
   settled_at: '2026-09-24T12:00:00Z' };
 
-test('links a unique won auction to its copy and persists realized gross profit', () => {
+test('links a unique won auction to its copy and deducts 20 percent sale fees', () => {
   const state = {};
   assert.equal(reconcilePurchases(state, [won], [copy]), true);
   assert.equal(recordListing(state, saleId, copyId, cardId), true);
   const restored = JSON.parse(JSON.stringify(state));
   assert.deepEqual(realizedSale(restored, sale),
-    { purchaseId, cost: 300, profit: 400 });
+    { purchaseId, cost: 300, netSalePrice: 560, profit: 260 });
   assert.equal(reconcilePurchases(restored, [won], [copy]), false);
 });
 

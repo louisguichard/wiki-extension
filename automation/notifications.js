@@ -15,6 +15,19 @@ const format = (value) => new Intl.NumberFormat('fr-FR', {
 }).format(value);
 const titleFor = (item) => String(item.card?.wikipedia_title || 'Carte WikiMasters')
   .replace(/[\r\n\t]+/g, ' ').slice(0, 120);
+const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (character) => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+})[character]);
+const pvText = (profit) => profit == null ? 'PV non calculable' : `${format(profit)} PV`;
+
+function mailPayload(eventKey, subject, lines, profitLine) {
+  return { eventKey, subject,
+    body: `${lines.join('\n')}\n`,
+    htmlBody: `<!doctype html><html><body>${lines.map((line, index) => {
+      const safe = escapeHtml(line);
+      return index === profitLine ? `<strong>${safe}</strong>` : safe;
+    }).join('<br>')}</body></html>` };
+}
 
 function sendViaPython(payload, settings = {}) {
   return new Promise((resolve, reject) => {
@@ -71,13 +84,15 @@ class TradeNotifier {
     const paid = numeric(item.final_price);
     const link = `https://www.wiki-masters.com/marketplace/${item.id}`;
     if (kind === 'sale') {
-      const realized = realizedSale(this.state, item);
-      return { eventKey: key,
-        subject: `WikiMasters : vente conclue — ${title}`,
-        body: `${title}\nPrix de vente final : ${format(paid)} wikibidous\n` +
-          `Prix d'achat : ${realized ? `${format(realized.cost)} wikibidous` : 'inconnu'}\n` +
-          `Plus-value réalisée brute : ${realized ? `${format(realized.profit)} wikibidous` : 'non calculable'}\n` +
-          `Enchère : ${link}\n` };
+      const realized = realizedSale(this.state, item, this.bot.config.resaleHaircut);
+      return mailPayload(key, `${title} vendu (${pvText(realized?.profit)})`, [
+        title,
+        `Prix de vente final : ${format(paid)} wikibidous`,
+        `Prix d'achat : ${realized ? `${format(realized.cost)} wikibidous` : 'inconnu'}`,
+        `Plus-value réalisée après frais : ${realized ? `${format(realized.profit)} wikibidous` : 'non calculable'}`,
+        '',
+        `Enchère : ${link}`
+      ], 3);
     }
     const rarity = item.snapshot_rarity || item.card?.rarity;
     const cached = this.bot.averages.get(`${item.card_id}:${rarity}`);
@@ -85,12 +100,14 @@ class TradeNotifier {
     const average = numeric(sale?.average);
     const conservative = average == null ? null : Math.floor(average * this.bot.config.resaleHaircut);
     const profit = conservative == null ? null : conservative - paid;
-    return { eventKey: key,
-      subject: `WikiMasters : achat remporté — ${title}`,
-      body: `${title}\nPrix payé : ${format(paid)} wikibidous\n` +
-        `Prix moyen de vente : ${average == null ? 'indisponible' : `${format(average)} wikibidous`}\n` +
-        `Plus-value estimée avant frais : ${profit == null ? 'non calculable' : `${format(profit)} wikibidous`}\n` +
-        `Enchère : ${link}\n` };
+    return mailPayload(key, `Acheté : ${title} (${pvText(profit)})`, [
+      title,
+      `Prix payé : ${format(paid)} wikibidous`,
+      `Prix moyen de vente : ${average == null ? 'indisponible' : `${format(average)} wikibidous`}`,
+      `Plus-value estimée après frais : ${profit == null ? 'non calculable' : `${format(profit)} wikibidous`}`,
+      '',
+      `Enchère : ${link}`
+    ], 3);
   }
 
   async tick() {

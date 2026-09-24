@@ -9,10 +9,10 @@ const cardId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const since = '2026-09-23T21:33:00Z';
 const settled = '2026-09-23T21:35:00Z';
 const sale = { id: saleId, card_id: cardId, snapshot_rarity: 'L',
-  card: { wikipedia_title: 'Carte vendue' }, status: 'settled_sold',
+  card: { wikipedia_title: 'Louis XIV' }, status: 'settled_sold',
   final_price: 700, settled_at: settled };
 const purchase = { id: purchaseId, card_id: cardId, snapshot_rarity: 'L',
-  card: { wikipedia_title: 'Carte achetée' }, status: 'settled_sold',
+  card: { wikipedia_title: 'Manuel Bompard' }, status: 'settled_sold',
   final_price: 300, settled_at: settled };
 
 test('detects only completed sales and purchases since activation', () => {
@@ -24,12 +24,12 @@ test('detects only completed sales and purchases since activation', () => {
   assert.deepEqual(events.map((event) => event.kind), ['sale', 'purchase']);
 });
 
-test('sends each outcome once with average and estimated gross profit', async () => {
+test('sends each outcome once with fee-adjusted purchase profit', async () => {
   const sent = [];
   const state = {};
   const mine = { history: [sale], won: [purchase] };
   const api = { getMine: async () => ({ ok: true, data: mine }) };
-  const bot = { api, config: { resaleHaircut: 1 },
+  const bot = { api, config: { resaleHaircut: 0.8 },
     averages: new Map([[`${cardId}:L`, { value: { average: 1000 } }]]),
     read: async (_, fn) => (await fn()).data,
     saleValue: async () => ({ average: 1000 }) };
@@ -39,24 +39,51 @@ test('sends each outcome once with average and estimated gross profit', async ()
   await notifier.tick();
   await notifier.tick();
   assert.equal(sent.length, 2);
+  assert.equal(sent[0].subject, 'Louis XIV vendu (PV non calculable)');
   assert.match(sent[0].body, /700 wikibidous/);
-  assert.match(sent[0].body, /Plus-value réalisée brute : non calculable/);
+  assert.match(sent[0].body, /Plus-value réalisée après frais : non calculable\n\nEnchère :/);
+  assert.match(sent[0].htmlBody, /<strong>Plus-value réalisée après frais : non calculable<\/strong><br><br>Enchère :/);
+  assert.equal(sent[1].subject, 'Acheté : Manuel Bompard (500 PV)');
   assert.match(sent[1].body, /Prix moyen de vente : 1\s?000 wikibidous/);
-  assert.match(sent[1].body, /Plus-value estimée avant frais : 700 wikibidous/);
+  assert.match(sent[1].body, /Plus-value estimée après frais : 500 wikibidous\n\nEnchère :/);
+  assert.match(sent[1].htmlBody, /<strong>Plus-value estimée après frais : 500 wikibidous<\/strong><br><br>Enchère :/);
   assert.equal(Object.keys(state.notifications.sent).length, 2);
 });
 
-test('sale email includes realized gross profit for a uniquely tracked copy', async () => {
+test('sale email includes realized profit after fees for a uniquely tracked copy', async () => {
   const state = {};
   const copyId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
   reconcilePurchases(state, [purchase], [{ id: copyId, card_id: cardId,
     card: { rarity: 'L' }, obtained_at: settled }]);
   recordListing(state, saleId, copyId, cardId);
-  const bot = { averages: new Map(), config: { resaleHaircut: 1 } };
+  const bot = { averages: new Map(), config: { resaleHaircut: 0.8 } };
   const notifier = new TradeNotifier({ bot, api: {}, state, save: () => {}, since });
   const message = await notifier.emailFor({ kind: 'sale', item: sale, key: `sale:${saleId}` });
   assert.match(message.body, /Prix d'achat : 300 wikibidous/);
-  assert.match(message.body, /Plus-value réalisée brute : 400 wikibidous/);
+  assert.equal(message.subject, 'Louis XIV vendu (260 PV)');
+  assert.match(message.body, /Plus-value réalisée après frais : 260 wikibidous\n\nEnchère :/);
+  assert.match(message.htmlBody, /<strong>Plus-value réalisée après frais : 260 wikibidous<\/strong>/);
+});
+
+test('escapes card titles in HTML while keeping the subject readable', async () => {
+  const state = {};
+  const bot = { averages: new Map([[`${cardId}:L`, { value: { average: 1000 } }]]),
+    config: { resaleHaircut: 0.8 } };
+  const notifier = new TradeNotifier({ bot, api: {}, state, save: () => {}, since });
+  const item = { ...purchase, card: { wikipedia_title: 'A < B & C' } };
+  const message = await notifier.emailFor({ kind: 'purchase', item, key: `purchase:${purchaseId}` });
+  assert.equal(message.subject, 'Acheté : A < B & C (500 PV)');
+  assert.match(message.htmlBody, /A &lt; B &amp; C/);
+  assert.doesNotMatch(message.htmlBody, /A < B/);
+});
+
+test('groups thousands in the profit shown in the subject', async () => {
+  const bot = { averages: new Map([[`${cardId}:L`, { value: { average: 4000 } }]]),
+    config: { resaleHaircut: 0.8 } };
+  const notifier = new TradeNotifier({ bot, api: {}, state: {}, save: () => {}, since });
+  const item = { ...purchase, final_price: 885 };
+  const message = await notifier.emailFor({ kind: 'purchase', item, key: `purchase:${purchaseId}` });
+  assert.match(message.subject, /^Acheté : Manuel Bompard \(2\s315 PV\)$/);
 });
 
 test('retries a failed email after backoff without duplicate successful mail', async () => {

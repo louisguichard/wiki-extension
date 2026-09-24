@@ -14,11 +14,14 @@ from email.utils import formataddr
 def message_for(payload, sender):
     subject = payload.get("subject")
     body = payload.get("body")
+    html_body = payload.get("htmlBody")
     event_key = payload.get("eventKey")
     if not all(isinstance(value, str) and value for value in (subject, body, event_key)):
         raise ValueError("invalid_notification")
     if len(subject) > 160 or len(body) > 4000 or len(event_key) > 100:
         raise ValueError("notification_too_large")
+    if html_body is not None and (not isinstance(html_body, str) or len(html_body) > 8000):
+        raise ValueError("invalid_html_notification")
     message = EmailMessage()
     message["From"] = formataddr(("WikiMasters Bot", sender))
     recipient = os.environ.get("WMMA_MAIL_TO")
@@ -29,6 +32,8 @@ def message_for(payload, sender):
     digest = hashlib.sha256(event_key.encode("utf-8")).hexdigest()[:32]
     message["Message-ID"] = f"<wikimasters-{digest}@{sender.rsplit('@', 1)[-1]}>"
     message.set_content(body)
+    if html_body:
+        message.add_alternative(html_body, subtype="html")
     return message
 
 

@@ -1,6 +1,6 @@
 {
   "scanIntervalSeconds": 20,
-  "resaleHaircut": 1.0,
+  "resaleHaircut": 0.8,
   "minSaleCount": 0,
   "buyEnabled": false,
   "emailNotifications": false,

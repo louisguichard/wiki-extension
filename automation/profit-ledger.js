@@ -45,7 +45,7 @@ function recordListing(state, auctionId, copyId, cardId) {
   return true;
 }
 
-function realizedSale(state, sale) {
+function realizedSale(state, sale, resaleHaircut = 0.8) {
   const ledger = ledgerFor(state);
   const listing = ledger.listings[sale.id];
   const price = positive(sale.final_price);
@@ -56,7 +56,9 @@ function realizedSale(state, sale) {
       time(sale.settled_at || sale.end_at));
   if (purchases.length !== 1) return null;
   const [purchaseId, purchase] = purchases[0];
-  return { purchaseId, cost: purchase.cost, profit: price - purchase.cost };
+  const netSalePrice = Math.floor(price * resaleHaircut);
+  return { purchaseId, cost: purchase.cost, netSalePrice,
+    profit: netSalePrice - purchase.cost };
 }
 
 module.exports = { ledgerFor, reconcilePurchases, recordListing, realizedSale };

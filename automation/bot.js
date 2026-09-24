@@ -484,11 +484,11 @@ class MarketBot {
         continue;
       }
       try {
+        const previousIds = new Set(fresh.mine.selling.map((item) => item.id));
         const response = await this.api.createListing(plan.userCardId, plan.baseAmount);
         if (response.ok) {
           let confirmed = false;
           let listingId = null;
-          const previousIds = new Set(fresh.mine.selling.map((item) => item.id));
           for (let check = 0; check < 2; check++) {
             try {
               const snapshot = await this.account();
