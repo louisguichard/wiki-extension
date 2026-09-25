@@ -29,6 +29,8 @@ function setup(label) {
     firstElementChild: { after(row) { averageRow = row; } }
   };
   const document = {
+    visibilityState: 'visible',
+    addEventListener() {},
     body: { classList: { add: (name) => classes.add(name), remove: (name) => classes.delete(name) } },
     querySelectorAll: (selector) => selector === 'main .card-frame' ? [frame] : [],
     createElement: (tag) => tag === 'div' ? {
@@ -59,6 +61,7 @@ function setup(label) {
       setItem: (key, value) => stored.set(key, value)
     },
     requestAnimationFrame: (callback) => frames.push(callback),
+    setInterval() {},
     setTimeout(callback, delay) {
       const id = ++nextTimer;
       timers.set(id, { callback, delay });

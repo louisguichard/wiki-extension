@@ -45,7 +45,7 @@ test('lists only an unprotected owned copy with enough sales and a free slot', (
   assert.equal(planListing({ ...base, saleCount: 0 }).reason, 'insufficient_sales_history');
   assert.equal(planListing({ ...base, activeListings: 5 }).reason, 'no_listing_slot');
   assert.equal(planListing({ ...base, protectedCard: true }).reason, 'card_not_eligible');
-  assert.equal(planListing({ ...base, discountFraction: 0.11 }).reason, 'invalid_discount');
+  assert.equal(planListing({ ...base, discountFraction: 0.21 }).reason, 'invalid_discount');
 });
 
 test('does not choose a sniping lead before enough manual bid samples', () => {

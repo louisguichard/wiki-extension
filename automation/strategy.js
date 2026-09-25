@@ -79,7 +79,7 @@ function planListing(input) {
       activeListings < 0 || maxListings < 1 || activeListings >= maxListings) {
     return { eligible: false, reason: 'no_listing_slot' };
   }
-  if (!Number.isFinite(discountFraction) || discountFraction < 0 || discountFraction > 0.1) {
+  if (!Number.isFinite(discountFraction) || discountFraction < 0 || discountFraction > 0.2) {
     return { eligible: false, reason: 'invalid_discount' };
   }
   return {

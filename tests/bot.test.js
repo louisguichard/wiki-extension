@@ -87,6 +87,39 @@ test('persists sale averages for faster subsequent cycles', async () => {
   assert.equal(env.state.averages[`${cardA}:L`].value.average, 1000);
 });
 
+test('rechecks a missing sale average after one hour and lists a newly priced card', async () => {
+  const selling = [];
+  const env = setup({ selling, collection: [copy(copyA, cardA, 'Emma Watson')] });
+  env.bot.averages.set(`${cardA}:L`, { at: time - 2 * 3600000, value: null });
+  let priceReads = 0;
+  env.bot.api.getSalesSummary = async () => {
+    priceReads++;
+    return ok({ summary: { L: { average: 15762 } } });
+  };
+  env.bot.api.createListing = async (id, value) => {
+    env.calls.listings.push({ id, value });
+    selling.push({ id: auctionId, card_id: cardA });
+    return ok({});
+  };
+  await env.bot.listingTick();
+  assert.equal(priceReads, 1);
+  assert.deepEqual(env.calls.listings, [{ id: copyA, value: 14659 }]);
+  assert.equal(env.state.averages[`${cardA}:L`].value.average, 15762);
+});
+
+test('backfills only one known historical listing per sale cycle', async () => {
+  const env = setup();
+  const oldId = '11111111-1111-4111-8111-111111111111';
+  env.state.tradeLedger = { listings: { [oldId]: { copyId: copyA, cardId: cardA },
+    [auctionId]: { copyId: copyB, cardId: cardB } } };
+  const observed = [];
+  env.bot.saleStudy = { records: new Map(), observeMine: (mine) =>
+    observed.push(...mine.history) };
+  env.bot.api.getAuction = async (id) => ok({ auction: { id, status: 'settled_unsold' } });
+  await env.bot.backfillOne();
+  assert.deepEqual(observed.map((item) => item.id), [oldId]);
+});
+
 test('accepts overlapping marketplace pages and stops when pagination repeats', async () => {
   const env = setup();
   const firstPage = Array.from({ length: 50 }, (_, i) => ({ ...auction(300),
@@ -192,10 +225,11 @@ test('never lists a named protected card and reloads exclusions before the sale 
   assert.deepEqual(second.calls.listings, []);
 });
 
-test('opens one listing per sale cycle while checking remaining prices', async () => {
+test('defers another listing when the first cannot be confirmed', async () => {
   const env = setup({ collection: [copy(copyB, cardB), copy(copyA, cardA)] });
   await env.bot.listingTick();
   assert.deepEqual(env.calls.listings, [{ id: copyA, value: 930 }]);
+  env.bot.now = () => time + 2 * 60000;
   await env.bot.listingTick();
   assert.deepEqual(env.calls.listings.map((item) => item.id), [copyA, copyB]);
 });
@@ -379,6 +413,24 @@ test('an ambiguous listing sets aside its copy while other cards remain eligible
   };
   await env.bot.tick();
   assert.equal(env.state.uncertainListings[0].copyId, copyA);
+  env.bot.now = () => time + 2 * 60000;
   await env.bot.tick();
   assert.deepEqual(env.calls.listings.map((call) => call.id), [copyA, copyB]);
+});
+
+test('repeated listing conflicts back off instead of trying another card every minute', async () => {
+  const env = setup({ collection: [copy(copyA, cardA), copy(copyB, cardB)],
+    listingResponse: { ok: false, status: 409, data: null } });
+  let now = time;
+  env.bot.now = () => now;
+  await env.bot.listingTick();
+  assert.deepEqual(env.calls.listings.map((call) => call.id), [copyA]);
+  assert.equal(env.state.listingFailure.retryAt, time + 2 * 60000);
+  now += 60000;
+  await env.bot.listingTick();
+  assert.equal(env.calls.listings.length, 1);
+  now += 60000;
+  await env.bot.listingTick();
+  assert.deepEqual(env.calls.listings.map((call) => call.id), [copyA, copyB]);
+  assert.equal(env.state.listingFailure.retryAt, now + 4 * 60000);
 });

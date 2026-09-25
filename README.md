@@ -11,7 +11,7 @@ This is an independent project, not an official WikiMasters extension.
 - Shows the historical average sale price for the matching card and rarity in purple, inside marketplace cards, auction details, and collection cards.
 - Outlines a marketplace auction in purple when its displayed price is at most half of that average.
 - Animates the loading indicator while a price is being fetched. Missing sale data is shown as unavailable.
-- Loads averages for visible cards first, caches fresh values for 24 hours, and slows requests when the API rate limits them.
+- Loads averages for visible cards first, caches fresh values for 8 hours, and slows requests when the API rate limits them.
 
 An average is historical data, not a guaranteed resale price. The current auction price can change after the outline appears.
 
@@ -28,7 +28,7 @@ No Node.js, local token, or bot setup is needed for the price overlay.
 
 The bot uses your existing WikiMasters session in Chrome through the extension. It runs only while the local process is active. **Automatic buying is disabled** in the supplied configuration (`buyEnabled: false`). Running `bot:live` creates real sale listings.
 
-The selling cycle reads your collection and current listings, waits for average prices for all eligible card types, then selects randomly among available copies of the ten highest-valued types (including types already listed in the ranking). It starts 10-minute auctions at a random amount from 90% to 100% of the historical average and respects the concurrent-listing limit returned by WikiMasters. It checks the account again immediately before listing. Missing prices, session errors, and ambiguous write results stop or delay sales rather than triggering blind retries.
+The selling cycle reads your collection and current listings, waits for average prices for all eligible card types, then selects randomly among available copies of the ten highest-valued types (including types already listed in the ranking). By default, it starts 10-minute auctions at a random amount from 90% to 100% of the historical average and respects the concurrent-listing limit returned by WikiMasters. The optional `priceExperiment` setting uses a balanced random order of 0%, 5%, 10%, 15%, and 20% discounts instead. It checks the account again immediately before listing. Missing prices, session errors, and ambiguous write results stop or delay sales rather than triggering blind retries.
 
 ### Set up and run
 
@@ -54,6 +54,8 @@ npm run bot:live
 ```
 
 Press **Ctrl+C** in that terminal to stop. On macOS, the launcher uses `caffeinate` to prevent idle sleep while it runs. The computer must still remain powered on, connected, and signed in to WikiMasters. See [BOT.md](BOT.md) for operation, error handling, email notifications, and advanced configuration.
+
+Use `npm run bot:report` to see locally recorded sales, unsold auctions, and the outcome of each starting-price group. The private observation file is `.wmma-bot/sales-study.jsonl` and is ignored by Git.
 
 ### Keep specific cards
 

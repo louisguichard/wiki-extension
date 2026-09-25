@@ -4,7 +4,8 @@
 
   const model = window.WMMAModel;
   const CACHE_PREFIX = 'wmma_average_v1_';
-  const CACHE_TTL = 24 * 60 * 60 * 1000;
+  const CACHE_TTL = 8 * 60 * 60 * 1000;
+  const REFRESH_CHECK_MS = 5 * 60 * 1000;
   const STALE_TTL = 7 * 24 * 60 * 60 * 1000;
   const ERROR_TTL = 60 * 1000;
   const CACHE_MAX_AGE = 30 * 24 * 60 * 60 * 1000;
@@ -505,6 +506,11 @@
 
   function start() {
     if (!document.body) return requestAnimationFrame(start);
+    function refreshVisiblePrices() {
+      if (document.visibilityState !== 'visible') return;
+      if (detailAuction?.id === detailId()) queuePrice(detailAuction.cardId);
+      scheduleSync();
+    }
     new MutationObserver((mutations) => {
       if (mutations.some(({ addedNodes, removedNodes }) =>
         [...addedNodes, ...removedNodes].some((node) =>
@@ -515,6 +521,8 @@
     }).observe(document.body, { childList: true, subtree: true });
     scheduleSync();
     setTimeout(cleanupCache, 5000);
+    setInterval(refreshVisiblePrices, REFRESH_CHECK_MS);
+    document.addEventListener('visibilitychange', refreshVisiblePrices);
   }
 
   window.dispatchEvent(new CustomEvent('wmma-content-ready'));

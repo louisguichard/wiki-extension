@@ -11,6 +11,7 @@
     "bot:stop": "node automation/stop.js",
     "bot:install": "node automation/service.js install",
     "bot:status": "node automation/service.js status",
+    "bot:report": "node automation/sale-report.js",
     "bot:uninstall": "node automation/service.js uninstall"
   },
   "dependencies": {

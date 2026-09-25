@@ -3,6 +3,7 @@
   "resaleHaircut": 0.8,
   "minSaleCount": 0,
   "buyEnabled": false,
+  "priceExperiment": false,
   "emailNotifications": false,
   "notificationSince": null,
   "excludedCardIds": [],

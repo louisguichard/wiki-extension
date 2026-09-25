@@ -5,13 +5,17 @@ const { minimumBidFromAuction, displayedPrice, planBid, planListing,
   recommendBidLead } = require('./strategy.js');
 const { loadExclusions, isExcluded } = require('./exclusions.js');
 const { reconcilePurchases, recordListing } = require('./profit-ledger.js');
+const { ARMS } = require('./sale-study.js');
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const amount = (value) => value != null && value !== '' &&
   Number.isFinite(Number(value)) && Number(value) >= 0 ? Number(value) : null;
 const active = (auction, now) => auction?.status === 'active' && Date.parse(auction.end_at) > now;
 const key = (cardId, rarity) => `${cardId}:${rarity}`;
-const PRICE_CACHE_MS = 24 * 3600000;
+const PRICE_CACHE_MS = 8 * 3600000;
+const EMPTY_PRICE_CACHE_MS = 60 * 60000;
+const priceCacheAge = (entry, maxAgeMs = PRICE_CACHE_MS) =>
+  entry?.value ? maxAgeMs : Math.min(maxAgeMs, EMPTY_PRICE_CACHE_MS);
 const SALE_PRICE_SCAN_BATCH = 12;
 const SALE_POOL_SIZE = 10;
 async function mapInGroups(items, size, fn) {
@@ -49,7 +53,8 @@ function chooseBid(candidates) {
 class MarketBot {
   constructor({ api, config, state, save, log = () => {}, now = () => Date.now(),
     randomDiscount = () => randomInt(0, 1001) / 10000,
-    randomIndex = (length) => randomInt(length), readExclusions = loadExclusions }) {
+    randomIndex = (length) => randomInt(length), readExclusions = loadExclusions,
+    saleStudy = null }) {
     this.api = api;
     this.config = config;
     this.state = state;
@@ -59,8 +64,9 @@ class MarketBot {
     this.randomDiscount = randomDiscount;
     this.randomIndex = randomIndex;
     this.readExclusions = readExclusions;
+    this.saleStudy = saleStudy;
     this.averages = new Map(Object.entries(state.averages || {}).filter(([, entry]) =>
-      (Number.isFinite(entry?.at) && now() - entry.at < PRICE_CACHE_MS) ||
+      (Number.isFinite(entry?.at) && now() - entry.at < priceCacheAge(entry)) ||
       entry?.retryAt > now()));
     this.collectionCache = { at: 0, cards: [] };
     this.collectionProgress = null;
@@ -96,7 +102,8 @@ class MarketBot {
     const cacheKey = key(cardId, rarity);
     const cached = this.averages.get(cacheKey);
     if (this.state.pricePausedUntil > this.now()) return cached?.value || null;
-    if (cached && (this.now() - cached.at < maxAgeMs || cached.retryAt > this.now())) {
+    if (cached && (this.now() - cached.at < priceCacheAge(cached, maxAgeMs) ||
+        cached.retryAt > this.now())) {
       return cached.value;
     }
     try {
@@ -139,7 +146,42 @@ class MarketBot {
     ]);
     const available = amount(balance.balance);
     if (available == null) throw new Error('balance_unknown');
-    return { balance: available, mine: validateMine(mine) };
+    validateMine(mine);
+    this.saleStudy?.observeMine(mine, this.averages);
+    if (this.saleStudy && this.state.pendingSaleStudy) {
+      const listings = [...mine.selling, ...(mine.history || [])];
+      for (const [copyId, pending] of Object.entries(this.state.pendingSaleStudy)) {
+        const matches = listings.filter((item) => item.card_id === pending.cardId &&
+          Number(item.listing_base_amount ?? item.base_amount) === pending.baseAmount &&
+          Date.parse(item.created_at) >= pending.startedAt - 30000 &&
+          Date.parse(item.created_at) <= pending.startedAt + 5 * 60000);
+        if (matches.length === 1) {
+          this.saleStudy.confirm(matches[0].id, { ...pending, copyId });
+          delete this.state.pendingSaleStudy[copyId];
+          this.save(this.state);
+        } else if (this.now() - pending.startedAt > 15 * 60000) {
+          delete this.state.pendingSaleStudy[copyId];
+          this.save(this.state);
+        }
+      }
+    }
+    return { balance: available, mine };
+  }
+
+  listingDiscount() {
+    if (!this.config.priceExperiment) return this.randomDiscount();
+    if (!Array.isArray(this.state.priceExperimentQueue) ||
+        !this.state.priceExperimentQueue.length) {
+      const queue = [...ARMS];
+      for (let index = queue.length - 1; index > 0; index--) {
+        const swap = randomInt(index + 1);
+        [queue[index], queue[swap]] = [queue[swap], queue[index]];
+      }
+      this.state.priceExperimentQueue = queue;
+    }
+    const discount = this.state.priceExperimentQueue.pop();
+    this.save(this.state);
+    return discount;
   }
 
   async market() {
@@ -395,6 +437,7 @@ class MarketBot {
   }
 
   async list(account) {
+    if (this.state.listingFailure?.retryAt > this.now()) return;
     const exclusions = this.readExclusions();
     this.state.uncertainListings ||= this.state.uncertainListing ? [this.state.uncertainListing] : [];
     delete this.state.uncertainListing;
@@ -433,7 +476,7 @@ class MarketBot {
     const needsPrice = (item) => {
       const cached = this.averages.get(key(item.cardId, item.rarity));
       return !cached || !Number.isFinite(cached.at) || cached.at <= 0 ||
-        this.now() - cached.at >= PRICE_CACHE_MS;
+        this.now() - cached.at >= priceCacheAge(cached);
     };
     const scan = allCards.filter((item) => needsPrice(item) &&
       !(this.averages.get(key(item.cardId, item.rarity))?.retryAt > this.now()))
@@ -464,9 +507,15 @@ class MarketBot {
         throw new Error('invalid_sale_random_index');
       }
       const [candidate] = candidates.splice(index, 1);
-      const discount = this.randomDiscount();
+      const freshSale = await this.saleValue(candidate.cardId, candidate.rarity, 60 * 60000);
+      const latestPrice = this.averages.get(key(candidate.cardId, candidate.rarity));
+      if (!freshSale || !latestPrice || this.now() - latestPrice.at >= 60 * 60000) {
+        this.log('listing_skipped_stale_average');
+        continue;
+      }
+      const discount = this.listingDiscount();
       const plan = planListing({ userCardId: candidate.copy.id,
-        saleAverage: candidate.sale.average, saleCount: candidate.sale.count ?? 0,
+        saleAverage: freshSale.average, saleCount: freshSale.count ?? 0,
         minSalesCount: this.config.minSaleCount,
         activeListings: account.mine.selling.length + planned,
         maxListings: account.mine.maxConcurrentAuctions, discountFraction: discount });
@@ -485,6 +534,16 @@ class MarketBot {
       }
       try {
         const previousIds = new Set(fresh.mine.selling.map((item) => item.id));
+        if (this.saleStudy) {
+          this.state.pendingSaleStudy ||= {};
+          this.state.pendingSaleStudy[plan.userCardId] = {
+            cardId: candidate.cardId, average: freshSale.average,
+            salesCount: freshSale.count, targetDiscount: discount,
+            baseAmount: plan.baseAmount, startedAt: this.now(),
+            cohort: this.config.priceExperiment ? 'experiment' : 'standard'
+          };
+          this.save(this.state);
+        }
         const response = await this.api.createListing(plan.userCardId, plan.baseAmount);
         if (response.ok) {
           let confirmed = false;
@@ -508,11 +567,18 @@ class MarketBot {
             if (check === 0) await sleep(2000);
           }
           if (confirmed) {
-            if (recordListing(this.state, listingId, plan.userCardId, candidate.cardId)) {
-              this.save(this.state);
-            }
+            delete this.state.listingFailure;
+            recordListing(this.state, listingId, plan.userCardId, candidate.cardId);
+            if (listingId) this.saleStudy?.confirm(listingId, {
+              cardId: candidate.cardId, copyId: plan.userCardId,
+              average: freshSale.average, salesCount: freshSale.count,
+              targetDiscount: discount, baseAmount: plan.baseAmount,
+              cohort: this.config.priceExperiment ? 'experiment' : 'standard'
+            });
+            this.save(this.state);
             this.log('listing_confirmed', { baseAmount: plan.baseAmount,
-              sellingCount: account.mine.selling.length });
+              sellingCount: account.mine.selling.length,
+              discountPercent: Math.round(discount * 100) });
             this.collectionCache.cards = this.collectionCache.cards.filter((copy) =>
               copy.id !== plan.userCardId);
           } else {
@@ -520,6 +586,7 @@ class MarketBot {
               cardId: candidate.cardId, at: this.now() });
             this.save(this.state);
             this.log('listing_unconfirmed');
+            this.deferListing('confirmation_timeout');
             break;
           }
         } else if (response.status >= 500) {
@@ -527,12 +594,14 @@ class MarketBot {
             cardId: candidate.cardId, at: this.now() });
           this.save(this.state);
           this.log('listing_ambiguous');
+          this.deferListing('server_error', response.status);
           break;
         } else {
           this.state.uncertainListings.push({ copyId: plan.userCardId,
             cardId: candidate.cardId, at: this.now() });
           this.save(this.state);
           this.log('listing_rejected', { status: response.status, code: response.data?.code || null });
+          this.deferListing('rejected', response.status, response.data?.code);
           break;
         }
       } catch (error) {
@@ -541,9 +610,23 @@ class MarketBot {
           cardId: candidate.cardId, at: this.now() });
         this.save(this.state);
         this.log('listing_ambiguous');
+        this.deferListing('transport_error');
         break;
       }
     }
+  }
+
+  deferListing(reason, status = null, code = null) {
+    const previous = this.state.listingFailure;
+    const count = previous && this.now() - previous.at < 30 * 60000 ?
+      previous.count + 1 : 1;
+    const delayMs = Math.min(15 * 60000, 2 * 60000 * 2 ** Math.min(count - 1, 3));
+    this.state.listingFailure = { at: this.now(), count, reason, status,
+      code: typeof code === 'string' ? code.slice(0, 80) : null,
+      retryAt: this.now() + delayMs };
+    this.save(this.state);
+    this.log('listing_retry_scheduled', { reason, status, count,
+      delayMinutes: delayMs / 60000 });
   }
 
   persist() {
@@ -552,9 +635,34 @@ class MarketBot {
     this.state.bidAttempts = Object.fromEntries(Object.entries(this.state.bidAttempts || {})
       .filter(([, attempt]) => attempt.at > oldest));
     this.averages = new Map([...this.averages].filter(([, entry]) =>
-      this.now() - entry.at < PRICE_CACHE_MS || entry.retryAt > this.now()).slice(-3000));
+      this.now() - entry.at < priceCacheAge(entry) ||
+      entry.retryAt > this.now()).slice(-3000));
     this.state.averages = Object.fromEntries(this.averages);
     this.save(this.state);
+  }
+
+  async backfillOne() {
+    if (!this.saleStudy) return;
+    const missing = this.state.saleStudyMissing || {};
+    const id = Object.keys(this.state.tradeLedger?.listings || {}).find((listingId) =>
+      !this.saleStudy.records.has(listingId) && !missing[listingId]);
+    if (!id) return;
+    try {
+      const detail = await this.read('auction', () => this.api.getAuction(id));
+      if (!detail.auction || detail.auction.id !== id) throw new Error('auction_shape_unknown');
+      this.saleStudy.observeMine({ selling: [], history: [detail.auction] }, this.averages);
+      this.log('sale_study_backfilled', { status: detail.auction.status });
+    } catch (error) {
+      if (error.message === 'auction_http_404') {
+        this.state.saleStudyMissing ||= {};
+        this.state.saleStudyMissing[id] = true;
+        this.save(this.state);
+      } else if (error.message === 'session_expired' || error.message === 'bot_stopping') {
+        throw error;
+      } else {
+        this.log('sale_study_backfill_deferred', { reason: error.message });
+      }
+    }
   }
 
   async bidTick() {
@@ -567,6 +675,7 @@ class MarketBot {
   async listingTick() {
     const account = await this.account();
     await this.list(account);
+    await this.backfillOne();
     this.persist();
   }
 

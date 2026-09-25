@@ -53,6 +53,7 @@ if (command === 'preview') {
   process.stdout.write(`Removed ${label}\n`);
 } else if (command === 'status') {
   const lockPath = path.join(privateDir, 'run.lock');
+  const statePath = path.join(privateDir, 'state.json');
   if (fs.existsSync(plistPath)) {
     try {
       execFileSync('/bin/launchctl', ['print', `${domain}/${label}`], { stdio: 'inherit' });
@@ -68,6 +69,16 @@ if (command === 'preview') {
       `Bot actif dans un terminal (PID ${pid}).\n` : 'Bot arrêté (verrou ancien).\n');
   } else {
     process.stdout.write('Bot arrêté.\n');
+  }
+  if (fs.existsSync(statePath)) {
+    try {
+      const failure = JSON.parse(fs.readFileSync(statePath, 'utf8')).listingFailure;
+      if (failure?.retryAt > Date.now()) {
+        const cause = failure.status ? `HTTP ${failure.status}` : failure.reason;
+        process.stdout.write(`Dernier échec de vente : ${cause}. Prochain essai : ${
+          new Date(failure.retryAt).toLocaleTimeString('fr-FR')}.\n`);
+      }
+    } catch {}
   }
 } else {
   process.stderr.write('Usage: node automation/service.js preview|install|uninstall|status\n');

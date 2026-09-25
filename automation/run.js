@@ -8,12 +8,14 @@ const { WebSocketServer, WebSocket } = require('ws');
 const { createApiClient } = require('./api-client.js');
 const { MarketBot } = require('./bot.js');
 const { TradeNotifier, sendViaPython } = require('./notifications.js');
+const { SaleStudy } = require('./sale-study.js');
 
 const root = path.resolve(__dirname, '..');
 const privateDir = path.join(root, '.wmma-bot');
 const statePath = path.join(privateDir, 'state.json');
 const lockPath = path.join(privateDir, 'run.lock');
 const stopPath = path.join(privateDir, 'STOP');
+const studyPath = path.join(privateDir, 'sales-study.jsonl');
 const live = process.argv.includes('--live');
 
 function loadToken() {
@@ -33,6 +35,7 @@ function loadConfig() {
       config.minSaleCount < 0 || !Array.isArray(config.excludedCardIds) ||
       !Array.isArray(config.excludedCopyIds) ||
       typeof config.buyEnabled !== 'boolean' ||
+      typeof config.priceExperiment !== 'boolean' ||
       typeof config.emailNotifications !== 'boolean' ||
       (config.mailSource != null && typeof config.mailSource !== 'string') ||
       (config.mailTo != null && typeof config.mailTo !== 'string') ||
@@ -201,6 +204,7 @@ async function main() {
   const bridge = new BrowserBridge({ token: loadToken() });
   const pacer = new RequestPacer();
   const state = fs.existsSync(statePath) ? JSON.parse(fs.readFileSync(statePath, 'utf8')) : {};
+  const saleStudy = new SaleStudy(studyPath);
   const api = createApiClient(async (apiPath, init) => {
     const priority = init.method === 'POST' ? 3 :
       apiPath.includes('/sales') || apiPath.startsWith('/api/my-collection') ? 0 : 2;
@@ -208,13 +212,14 @@ async function main() {
     return { ok: result.ok, status: result.status, retryAfterMs: result.retryAfterMs,
       json: async () => result.data };
   }, { writesEnabled: live, bidsEnabled: live && config.buyEnabled });
-  const bot = new MarketBot({ api, config, state, save: saveState, log });
+  const bot = new MarketBot({ api, config, state, save: saveState, log, saleStudy });
   const notifier = live && config.emailNotifications ? new TradeNotifier({
     bot, api, state, save: saveState, log, since: config.notificationSince,
     send: (message) => sendViaPython(message, { source: config.mailSource, to: config.mailTo })
   }) : null;
   log(live ? 'live_started' : 'dry_run_started');
   if (!config.buyEnabled) log('buys_disabled');
+  if (config.priceExperiment) log('sale_price_experiment_started', { discounts: [0, 5, 10, 15, 20] });
   let stopping = false;
   let waitingForBrowser = false;
   process.on('SIGTERM', () => { stopping = true; pacer.stop(); });
